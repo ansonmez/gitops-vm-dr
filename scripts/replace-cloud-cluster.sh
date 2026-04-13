@@ -39,23 +39,41 @@ export KUBECONFIG="$CLOUD_KC"
 oc login "$CLOUD_API" -u "$CLOUD_USER" -p "$CLOUD_PASS" \
   --insecure-skip-tls-verify 2>&1 | grep -E "Login|error" || true
 
-# ── Update ArgoCD cluster registration ───────────────────────────────────────
+# ── Update ArgoCD cluster registration via oc Secret ─────────────────────────
 echo "--- Updating ArgoCD cluster registration ---"
-argocd login "$ARGOCD_SERVER" \
-  --username admin \
-  --password "$ARGOCD_PASS" \
-  --insecure \
-  --grpc-web
+SNOMGM_KC="${SNOMGM_KC:-/root/kubeconfig-snomgm}"
 
-argocd cluster rm cloud --yes 2>/dev/null || echo "  Old cloud cluster not found in ArgoCD"
+# Create new SA token on new cloud cluster
+KUBECONFIG="$CLOUD_KC" oc create sa argocd-manager \
+  -n kube-system 2>/dev/null || true
+KUBECONFIG="$CLOUD_KC" oc create clusterrolebinding argocd-manager \
+  --clusterrole=cluster-admin \
+  --serviceaccount=kube-system:argocd-manager 2>/dev/null || true
 
-CLOUD_CONTEXT=$(oc config current-context)
-KUBECONFIG="$CLOUD_KC" argocd cluster add "$CLOUD_CONTEXT" \
-  --name cloud \
-  --server "$ARGOCD_SERVER" \
-  --insecure \
-  --grpc-web \
-  --yes
+CLOUD_TOKEN=$(KUBECONFIG="$CLOUD_KC" oc create token argocd-manager \
+  -n kube-system --duration=8760h)
+
+# Replace the cluster Secret on snomgm
+KUBECONFIG="$SNOMGM_KC" oc apply -f - <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cluster-cloud
+  namespace: openshift-gitops
+  labels:
+    argocd.argoproj.io/secret-type: cluster
+type: Opaque
+stringData:
+  name: cloud
+  server: "${CLOUD_API}"
+  config: |
+    {
+      "bearerToken": "${CLOUD_TOKEN}",
+      "tlsClientConfig": {
+        "insecure": true
+      }
+    }
+EOF
 
 # ── Re-apply namespace on new cloud cluster ───────────────────────────────────
 echo "--- Namespace ---"

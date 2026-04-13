@@ -48,6 +48,12 @@ echo "── PVCs on cloud (VolumeSync destinations) ──"
 oc --kubeconfig="$CLOUD_KC" get pvc -n "$NAMESPACE" 2>/dev/null || echo "  (none)"
 
 echo ""
-echo "── ArgoCD Application status ──"
-argocd app list --server "$ARGOCD_SERVER" --insecure --grpc-web 2>/dev/null \
-  | grep vm-dr || echo "  (argocd not configured or no vm-dr apps)"
+echo "── ArgoCD Application status (on snomgm) ──"
+SNOMGM_KC="${SNOMGM_KC:-/root/kubeconfig-snomgm}"
+KUBECONFIG="$SNOMGM_KC" oc get applications -n openshift-gitops \
+  -l "app.kubernetes.io/managed-by=openshift-gitops" \
+  -o custom-columns="NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status" \
+  2>/dev/null | grep -E "vm-dr|NAME" || \
+KUBECONFIG="$SNOMGM_KC" oc get applications -n openshift-gitops \
+  -o custom-columns="NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status" \
+  2>/dev/null | grep -E "vm-dr|NAME" || echo "  (no vm-dr applications found)"
