@@ -1,37 +1,51 @@
 ---
 # EDA Rulebook: VM DR Monitor
-# Periodically triggers the Reconcile VMs job to keep Git manifests in sync.
+# Watches the vmtocloud namespace on c103 for VirtualMachine events
+# and triggers the appropriate AAP job template automatically.
 #
-# NOTE: ansible.eda.k8s requires the kubernetes.core collection which may not
-# be present in all Decision Environments. This rulebook uses ansible.eda.tick
-# as a reliable alternative — it triggers reconciliation every 5 minutes,
-# complementing the on-prem reconciler CronJob.
+# Uses kseremet.eda.k8s source plugin (custom, included in the
+# quay.io/koray/eda-de-openshift-aap25 Decision Environment).
 #
-# For real-time k8s watch (requires DE with kubernetes.core collection):
-# replace the source block with:
-#   - ansible.eda.k8s:
-#       api_version: kubevirt.io/v1
-#       kind: VirtualMachine
-#       namespace: vmtocloud
-#       label_selectors: ["dr.enabled=true"]
-#       host: "{{ K8S_AUTH_HOST }}"
-#       api_key: "{{ K8S_AUTH_API_KEY }}"
-#       verify_ssl: false
+# Deploy this as an EDA Rulebook Activation in AAP on sno16.
+# Pass c103 connection details via EDA Activation extra_vars:
+#   watch_namespace: vmtocloud
+#   K8S_AUTH_HOST: https://api.c103.anillocal.com:6443
+#   K8S_AUTH_API_KEY: <bearer-token>
+#   K8S_AUTH_VERIFY_SSL: "false"
 
-- name: VM DR - Periodic reconciliation trigger
+- name: VM DR - Watch vmtocloud namespace for VM events
   hosts: all
   sources:
-    - ansible.eda.tick:
-        interval: 300  # every 5 minutes
+    - kseremet.eda.k8s:
+        api_version: kubevirt.io/v1
+        kind: VirtualMachine
+        namespace: "{{ watch_namespace | default('vmtocloud') }}"
 
   rules:
-    - name: Periodic reconcile — sync VM manifests to Git
-      condition: event.tick is defined
+    - name: VM created or updated — reconcile manifests
+      condition: >
+        event.k8s_event.type in ["ADDED", "MODIFIED"] and
+        event.k8s_event.object.spec.template is defined
       throttle:
-        once_within: 270 seconds
+        once_after: 10 seconds
         group_by_attributes:
-          - event.tick
-      action:
-        run_job_template:
-          name: "VM DR - Reconcile VMs"
-          organization: "Default"
+          - event.k8s_event.object.metadata.name
+          - event.k8s_event.object.metadata.namespace
+      actions:
+        - run_job_template:
+            name: "VM DR - Reconcile VMs"
+            organization: "Default"
+            job_args:
+              extra_vars:
+                vm_objects_list: "{{ (events.values() | map(attribute='k8s_event.object') | list) if events is mapping else [ event.k8s_event.object ] }}"
+
+    - name: VM deleted — garbage collect manifests
+      condition: event.k8s_event.type == "DELETED"
+      throttle:
+        once_after: 10 seconds
+        group_by_attributes:
+          - event.k8s_event.object.metadata.namespace
+      actions:
+        - run_job_template:
+            name: "VM DR - Garbage Collect"
+            organization: "Default"
