@@ -7,4 +7,4 @@ kind: Kustomization
 namespace: vmtocloud
 
 resources:
-  - ../../../../base/vmtocloud
+  - ../../../base/vmtocloud
