@@ -6,12 +6,10 @@
 # Uses kseremet.eda.k8s source plugin (custom, included in the
 # quay.io/koray/eda-de-openshift-aap25 Decision Environment).
 #
-# Deploy this as an EDA Rulebook Activation in AAP on sno16.
-# Pass c103 connection details via EDA Activation extra_vars:
+# Required extra_vars on the EDA Activation:
 #   watch_namespace: vmtocloud
-#   K8S_AUTH_HOST: https://api.c103.anillocal.com:6443
-#   K8S_AUTH_API_KEY: <bearer-token>
-#   K8S_AUTH_VERIFY_SSL: "false"
+#   k8s_host: https://api.c103.anillocal.com:6443
+#   k8s_token: <bearer-token>   (set via AAP credential vault, not hardcoded)
 
 - name: VM DR - Watch vmtocloud namespace for VM events
   hosts: all
@@ -20,6 +18,9 @@
         api_version: kubevirt.io/v1
         kind: VirtualMachine
         namespace: "{{ watch_namespace | default('vmtocloud') }}"
+        host: "{{ k8s_host }}"
+        api_key: "{{ k8s_token }}"
+        verify_ssl: false
 
   rules:
     - name: VM created or updated — reconcile manifests
