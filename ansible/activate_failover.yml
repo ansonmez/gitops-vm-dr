@@ -1,0 +1,96 @@
+---
+# VM DR - Activate Failover / Failback
+# Flips the failover-control kustomization to power-on (failover) or power-off (failback).
+# ArgoCD detects the Git change within 30s and starts/stops VMs on the cloud cluster.
+#
+# Required env vars:
+#   GIT_TOKEN, GIT_REPO, GIT_BRANCH
+#
+# Variables (set as AAP survey or extra vars):
+#   action:      "failover" (default) or "failback"
+#   namespace:   defaults to vmtocloud
+#   vm_name:     specific VM name, or "all" (default) to affect all VMs in namespace
+#
+# NOTE on storage promotion (future TODO):
+#   VolumeSync copyMethod=Direct keeps the destination PVC always writable,
+#   so no storage promotion step is needed for failover in this setup.
+#   If you switch to copyMethod=Snapshot in future, you will need to:
+#   1. Delete the ReplicationDestination on cloud to release the PVC
+#   2. Or add a storage promotion playbook that patches the ReplicationDestination
+#   This playbook has a placeholder section below marked TODO-FAILBACK-STORAGE.
+
+- name: Activate VM DR failover or failback
+  hosts: localhost
+  gather_facts: false
+  vars:
+    namespace: "{{ lookup('env', 'NAMESPACE') | default('vmtocloud', true) }}"
+    git_repo: "{{ lookup('env', 'GIT_REPO') | default('https://github.com/ansonmez/gitops-vm-dr.git', true) }}"
+    git_branch: "{{ lookup('env', 'GIT_BRANCH') | default('main', true) }}"
+    git_token: "{{ lookup('env', 'GIT_TOKEN') }}"
+    action: "{{ action | default('failover') }}"
+    vm_name: "{{ vm_name | default('all') }}"
+    work_dir: "/tmp/gitops-vm-dr-failover"
+    failover_ctrl: "vms/overlays/cloud/{{ namespace }}/components/failover-control/kustomization.yaml"
+
+  tasks:
+    - name: Validate action
+      ansible.builtin.assert:
+        that: action in ['failover', 'failback']
+        fail_msg: "action must be 'failover' or 'failback', got: {{ action }}"
+
+    - name: Configure git user
+      ansible.builtin.shell: |
+        git config --global user.email "aap-reconciler@vm-dr"
+        git config --global user.name "AAP VM DR Reconciler"
+
+    - name: Clone repo
+      ansible.builtin.git:
+        repo: "https://{{ git_token }}@{{ git_repo | regex_replace('^https://', '') }}"
+        dest: "{{ work_dir }}"
+        version: "{{ git_branch }}"
+        force: true
+
+    - name: "Set patch reference for {{ action }}"
+      ansible.builtin.set_fact:
+        patch_file: "{{ 'patches/power-on.yaml' if action == 'failover' else 'patches/power-off.yaml' }}"
+        commit_msg: >-
+          {{ action }}: {{ 'activate' if action == 'failover' else 'deactivate' }}
+          VM{{ ' ' + vm_name if vm_name != 'all' else 's' }} on cloud cluster
+
+    - name: Update failover-control kustomization
+      ansible.builtin.shell: |
+        cd {{ work_dir }}
+        # Replace the patch path line (power-on or power-off)
+        sed -i 's|patches/power-on.yaml|PLACEHOLDER|g' {{ failover_ctrl }}
+        sed -i 's|patches/power-off.yaml|PLACEHOLDER|g' {{ failover_ctrl }}
+        sed -i 's|PLACEHOLDER|{{ patch_file }}|g' {{ failover_ctrl }}
+        cat {{ failover_ctrl }}
+
+    # TODO-FAILBACK-STORAGE: If copyMethod is changed to Snapshot in future,
+    # add storage promotion steps here for failback direction:
+    # - For failover: promote VolumeSync destination PVC to primary (delete ReplicationDestination
+    #   or add a VolumeSync "promote" operation when supported)
+    # - For failback: re-establish replication from cloud back to on-prem
+
+    - name: Commit and push failover change
+      ansible.builtin.shell: |
+        cd {{ work_dir }}
+        git add {{ failover_ctrl }}
+        if git diff --cached --quiet; then
+          echo "No change needed — already in {{ action }} state"
+        else
+          git commit -m "{{ commit_msg }}"
+          git push origin {{ git_branch }}
+          echo "Pushed {{ action }} — ArgoCD will sync within 30s"
+        fi
+      register: git_result
+      changed_when: "'Pushed' in git_result.stdout"
+
+    - name: Show result
+      ansible.builtin.debug:
+        msg: "{{ git_result.stdout }}"
+
+    - name: Cleanup work dir
+      ansible.builtin.file:
+        path: "{{ work_dir }}"
+        state: absent

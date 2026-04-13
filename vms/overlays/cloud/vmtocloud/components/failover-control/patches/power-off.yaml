@@ -1,0 +1,7 @@
+# Applied by default — keeps all VMs halted on cloud (DR standby mode).
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: placeholder
+spec:
+  running: false

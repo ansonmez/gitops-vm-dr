@@ -1,0 +1,8 @@
+# Used during failover — starts VM on cloud.
+# Reference this file from kustomization.yaml instead of power-off.yaml to activate.
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: placeholder
+spec:
+  running: true

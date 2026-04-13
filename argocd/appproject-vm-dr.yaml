@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: vm-dr
+  namespace: openshift-gitops
+spec:
+  description: VM Disaster Recovery GitOps — VolumeSync + Skupper
+  sourceRepos:
+    - 'https://github.com/ansonmez/gitops-vm-dr.git'
+  destinations:
+    - server: '*'
+      namespace: vmtocloud
+  namespaceResourceWhitelist:
+    - group: 'kubevirt.io'
+      kind: VirtualMachine
+    - group: ''
+      kind: PersistentVolumeClaim
+    - group: ''
+      kind: ConfigMap
+    - group: ''
+      kind: Secret
+    - group: ''
+      kind: Service

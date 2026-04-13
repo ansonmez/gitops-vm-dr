@@ -1,0 +1,111 @@
+---
+# VM DR - Reconcile VMs
+# Discovers VMs labeled dr.enabled=true in the vmtocloud namespace on c103,
+# exports sanitized manifests to the gitops-vm-dr GitHub repo, and commits.
+# Run by: AAP job template "VM DR - Reconcile VMs" or EDA on VM create/update.
+#
+# Required env vars / AAP credentials:
+#   KUBECONFIG     - path to c103 kubeconfig (from AAP Machine credential)
+#   GIT_TOKEN      - GitHub personal access token with repo write (from AAP credential)
+#   NAMESPACE      - defaults to vmtocloud
+#   GIT_REPO       - defaults to https://github.com/ansonmez/gitops-vm-dr.git
+#   GIT_BRANCH     - defaults to main
+#   ONPREM_SC      - on-prem StorageClass name (defaults to democratic-csi-nfs)
+
+- name: Reconcile VM DR manifests to Git
+  hosts: localhost
+  gather_facts: false
+  vars:
+    namespace: "{{ lookup('env', 'NAMESPACE') | default('vmtocloud', true) }}"
+    git_repo: "{{ lookup('env', 'GIT_REPO') | default('https://github.com/ansonmez/gitops-vm-dr.git', true) }}"
+    git_branch: "{{ lookup('env', 'GIT_BRANCH') | default('main', true) }}"
+    git_token: "{{ lookup('env', 'GIT_TOKEN') }}"
+    onprem_sc: "{{ lookup('env', 'ONPREM_SC') | default('democratic-csi-nfs', true) }}"
+    kubeconfig: "{{ lookup('env', 'KUBECONFIG') }}"
+    work_dir: "/tmp/gitops-vm-dr-reconcile"
+    dr_label: "dr.enabled=true"
+
+  tasks:
+    - name: Ensure git and required tools are present
+      ansible.builtin.package:
+        name: [git, python3-kubernetes]
+        state: present
+      become: true
+      ignore_errors: true
+
+    - name: Configure git user
+      ansible.builtin.shell: |
+        git config --global user.email "aap-reconciler@vm-dr"
+        git config --global user.name "AAP VM DR Reconciler"
+
+    - name: Clone repo
+      ansible.builtin.git:
+        repo: "https://{{ git_token }}@{{ git_repo | regex_replace('^https://', '') }}"
+        dest: "{{ work_dir }}"
+        version: "{{ git_branch }}"
+        force: true
+
+    - name: Get VMs with DR label from c103
+      ansible.builtin.command:
+        cmd: >
+          oc get vm -n {{ namespace }} -l {{ dr_label }}
+          -o json --kubeconfig {{ kubeconfig }}
+      register: vms_raw
+      changed_when: false
+
+    - name: Parse VM list
+      ansible.builtin.set_fact:
+        vms: "{{ (vms_raw.stdout | from_json).items }}"
+
+    - name: Process each VM
+      ansible.builtin.include_tasks: tasks/process_single_vm.yml
+      vars:
+        vm: "{{ item }}"
+      loop: "{{ vms }}"
+      loop_control:
+        label: "{{ item.metadata.name }}"
+
+    - name: Regenerate base kustomization.yaml
+      ansible.builtin.template:
+        src: templates/base_kustomization.yaml.j2
+        dest: "{{ work_dir }}/vms/base/{{ namespace }}/kustomization.yaml"
+
+    - name: Regenerate c103 overlay kustomization.yaml
+      ansible.builtin.template:
+        src: templates/c103_kustomization.yaml.j2
+        dest: "{{ work_dir }}/vms/overlays/c103/{{ namespace }}/kustomization.yaml"
+
+    - name: Regenerate cloud overlay kustomization.yaml
+      ansible.builtin.template:
+        src: templates/cloud_kustomization.yaml.j2
+        dest: "{{ work_dir }}/vms/overlays/cloud/{{ namespace }}/kustomization.yaml"
+
+    - name: Ensure failover-control component exists
+      ansible.builtin.copy:
+        src: "{{ work_dir }}/vms/overlays/cloud/{{ namespace }}/components/"
+        dest: "{{ work_dir }}/vms/overlays/cloud/{{ namespace }}/components/"
+        remote_src: true
+      ignore_errors: true
+
+    - name: Commit and push changes
+      ansible.builtin.shell: |
+        cd {{ work_dir }}
+        git add -A
+        if git diff --cached --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "reconcile: sync VM manifests for namespace {{ namespace }}"
+          git push origin {{ git_branch }}
+          echo "Pushed changes"
+        fi
+      register: git_result
+      changed_when: "'Pushed changes' in git_result.stdout"
+
+    - name: Show git result
+      ansible.builtin.debug:
+        msg: "{{ git_result.stdout }}"
+
+    - name: Cleanup work dir
+      ansible.builtin.file:
+        path: "{{ work_dir }}"
+        state: absent

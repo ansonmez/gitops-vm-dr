@@ -1,0 +1,40 @@
+---
+# EDA Rulebook: VM DR Monitor
+# Watches the vmtocloud namespace on c103 for VirtualMachine events
+# and triggers the appropriate AAP job template automatically.
+#
+# Deploy this as an EDA Rulebook Activation in AAP on sno16.
+# The k8s source plugin connects to c103's API using the EDA credential.
+
+- name: VM DR - Watch vmtocloud namespace for VM events
+  hosts: all
+  sources:
+    - ansible.eda.k8s:
+        api_version: kubevirt.io/v1
+        kind: VirtualMachine
+        namespace: vmtocloud
+        label_selectors:
+          - "dr.enabled=true"
+
+  rules:
+    - name: VM created or updated — reconcile manifests
+      condition: event.type in ["ADDED", "MODIFIED"]
+      throttle:
+        once_within: 30 seconds
+        group_by_attributes:
+          - event.resource.metadata.namespace
+      action:
+        run_job_template:
+          name: "VM DR - Reconcile VMs"
+          organization: "Default"
+
+    - name: VM deleted — garbage collect manifests
+      condition: event.type == "DELETED"
+      throttle:
+        once_within: 10 seconds
+        group_by_attributes:
+          - event.resource.metadata.namespace
+      action:
+        run_job_template:
+          name: "VM DR - Garbage Collect"
+          organization: "Default"

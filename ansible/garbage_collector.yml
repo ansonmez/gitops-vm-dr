@@ -1,0 +1,155 @@
+---
+# VM DR - Garbage Collect
+# Removes manifests from Git for VMs that no longer exist (or lost dr.enabled=true label) on c103.
+# Run by: AAP job template "VM DR - Garbage Collect" or EDA on VM delete event.
+#
+# Required env vars:
+#   KUBECONFIG, GIT_TOKEN, NAMESPACE, GIT_REPO, GIT_BRANCH
+
+- name: Garbage collect orphaned VM manifests from Git
+  hosts: localhost
+  gather_facts: false
+  vars:
+    namespace: "{{ lookup('env', 'NAMESPACE') | default('vmtocloud', true) }}"
+    git_repo: "{{ lookup('env', 'GIT_REPO') | default('https://github.com/ansonmez/gitops-vm-dr.git', true) }}"
+    git_branch: "{{ lookup('env', 'GIT_BRANCH') | default('main', true) }}"
+    git_token: "{{ lookup('env', 'GIT_TOKEN') }}"
+    kubeconfig: "{{ lookup('env', 'KUBECONFIG') }}"
+    work_dir: "/tmp/gitops-vm-dr-gc"
+    dr_label: "dr.enabled=true"
+
+  tasks:
+    - name: Configure git user
+      ansible.builtin.shell: |
+        git config --global user.email "aap-reconciler@vm-dr"
+        git config --global user.name "AAP VM DR Reconciler"
+
+    - name: Clone repo
+      ansible.builtin.git:
+        repo: "https://{{ git_token }}@{{ git_repo | regex_replace('^https://', '') }}"
+        dest: "{{ work_dir }}"
+        version: "{{ git_branch }}"
+        force: true
+
+    - name: Find vm-*.yaml files in base
+      ansible.builtin.find:
+        paths: "{{ work_dir }}/vms/base/{{ namespace }}"
+        patterns: "vm-*.yaml"
+      register: base_vm_files
+
+    - name: Get live VMs with DR label from c103
+      ansible.builtin.command:
+        cmd: >
+          oc get vm -n {{ namespace }} -l {{ dr_label }}
+          -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'
+          --kubeconfig {{ kubeconfig }}
+      register: live_vms_raw
+      changed_when: false
+
+    - name: Set live VM name list
+      ansible.builtin.set_fact:
+        live_vms: "{{ live_vms_raw.stdout_lines | select('ne', '') | list }}"
+
+    - name: Identify orphaned VM manifests
+      ansible.builtin.set_fact:
+        orphaned_vms: >-
+          {{
+            base_vm_files.files
+            | map(attribute='path')
+            | map('basename')
+            | map('regex_replace', '^vm-(.+)\.yaml$', '\\1')
+            | difference(live_vms)
+            | list
+          }}
+
+    - name: Show orphans
+      ansible.builtin.debug:
+        msg: "Orphaned VMs to remove: {{ orphaned_vms }}"
+
+    - name: Remove orphaned manifests
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ work_dir }}/vms/base/{{ namespace }}/vm-{{ orphan }}.yaml"
+        - "{{ work_dir }}/vms/base/{{ namespace }}/pvc-{{ orphan }}.yaml"
+        - "{{ work_dir }}/vms/overlays/c103/{{ namespace }}/vm-{{ orphan }}.yaml"
+        - "{{ work_dir }}/vms/overlays/cloud/{{ namespace }}/vm-{{ orphan }}.yaml"
+      vars:
+        orphan: "{{ outer_item }}"
+      loop_control:
+        loop_var: item
+      loop: "{{ orphaned_vms | product(['base-vm', 'base-pvc', 'c103-vm', 'cloud-vm']) | list }}"
+      ignore_errors: true
+
+    # Simpler approach: iterate orphans and delete known files
+    - name: Remove orphaned VM files (base + overlays)
+      ansible.builtin.file:
+        path: "{{ item[0] }}"
+        state: absent
+      with_nested:
+        - "{{ orphaned_vms }}"
+      loop: >-
+        {{
+          orphaned_vms | map('regex_replace', '^(.+)$',
+            work_dir + '/vms/base/' + namespace + '/vm-\1.yaml') | list +
+          orphaned_vms | map('regex_replace', '^(.+)$',
+            work_dir + '/vms/base/' + namespace + '/pvc-\1.yaml') | list +
+          orphaned_vms | map('regex_replace', '^(.+)$',
+            work_dir + '/vms/overlays/cloud/' + namespace + '/vm-\1.yaml') | list
+        }}
+      ignore_errors: true
+      when: orphaned_vms | length > 0
+
+    - name: Regenerate base kustomization.yaml after cleanup
+      ansible.builtin.shell: |
+        cd {{ work_dir }}/vms/base/{{ namespace }}
+        echo "apiVersion: kustomize.config.k8s.io/v1beta1" > kustomization.yaml
+        echo "kind: Kustomization" >> kustomization.yaml
+        echo "namespace: {{ namespace }}" >> kustomization.yaml
+        echo "resources:" >> kustomization.yaml
+        for f in vm-*.yaml pvc-*.yaml; do
+          [ -f "$f" ] && echo "  - $f" >> kustomization.yaml
+        done
+        # Handle empty case
+        if ! grep -q "  - " kustomization.yaml; then
+          echo "  []" >> kustomization.yaml
+        fi
+      when: orphaned_vms | length > 0
+
+    - name: Regenerate cloud overlay kustomization.yaml after cleanup
+      ansible.builtin.shell: |
+        cd {{ work_dir }}/vms/overlays/cloud/{{ namespace }}
+        echo "apiVersion: kustomize.config.k8s.io/v1beta1" > kustomization.yaml
+        echo "kind: Kustomization" >> kustomization.yaml
+        echo "namespace: {{ namespace }}" >> kustomization.yaml
+        echo "resources:" >> kustomization.yaml
+        for f in vm-*.yaml; do
+          [ -f "$f" ] && echo "  - $f" >> kustomization.yaml
+        done
+        if ! grep -q "  - " kustomization.yaml; then
+          echo "  []" >> kustomization.yaml
+        fi
+        echo "components:" >> kustomization.yaml
+        echo "  - components/failover-control" >> kustomization.yaml
+      when: orphaned_vms | length > 0
+
+    - name: Commit and push cleanup
+      ansible.builtin.shell: |
+        cd {{ work_dir }}
+        git add -A
+        if git diff --cached --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "gc: remove orphaned manifests for {{ orphaned_vms | join(', ') }}"
+          git push origin {{ git_branch }}
+          echo "Pushed changes"
+        fi
+      register: git_result
+      changed_when: "'Pushed changes' in git_result.stdout"
+      when: orphaned_vms | length > 0
+
+    - name: Cleanup work dir
+      ansible.builtin.file:
+        path: "{{ work_dir }}"
+        state: absent

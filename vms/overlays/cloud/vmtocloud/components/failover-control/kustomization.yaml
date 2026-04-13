@@ -1,0 +1,17 @@
+# Failover control component.
+# DEFAULT state: all VMs halted on cloud (DR standby).
+# FAILOVER: change power-off.yaml reference to power-on.yaml for target VMs,
+#           then commit — ArgoCD syncs within 30s and KubeVirt starts the VM.
+# FAILBACK: revert to power-off.yaml reference.
+#
+# This is the ONLY file that should be manually edited (or edited by the
+# "VM DR - Activate Failover" AAP job) to trigger a failover/failback.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+patches:
+  - path: patches/power-off.yaml
+    target:
+      kind: VirtualMachine
+      group: kubevirt.io
+      version: v1

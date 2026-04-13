@@ -1,0 +1,49 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: vm-dr-c103
+  namespace: openshift-gitops
+spec:
+  generators:
+    - git:
+        repoURL: 'https://github.com/ansonmez/gitops-vm-dr.git'
+        revision: main
+        directories:
+          - path: vms/overlays/c103/*
+  template:
+    metadata:
+      name: 'vm-dr-c103-{{path.basename}}'
+    spec:
+      project: vm-dr
+      source:
+        repoURL: 'https://github.com/ansonmez/gitops-vm-dr.git'
+        targetRevision: main
+        path: '{{path}}'
+      destination:
+        name: c103
+        namespace: vmtocloud
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=false
+          - Replace=false
+        retry:
+          limit: 5
+          backoff:
+            duration: 30s
+            factor: 2
+            maxDuration: 10m
+      ignoreDifferences:
+        - kind: VirtualMachine
+          group: kubevirt.io
+          jqPathExpressions:
+            - .spec.template.metadata.annotations
+            - .spec.template.spec.domain.firmware
+            - .spec.template.spec.domain.machine
+        - kind: PersistentVolumeClaim
+          group: ''
+          jqPathExpressions:
+            - .spec.volumeName
+            - .status
