@@ -56,10 +56,12 @@ echo "  --namespace $NAMESPACE"
 echo ""
 
 echo "--- 09-11: Reconciler CronJob ---"
-CLOUD_API="$CLOUD_API" CLOUD_USER="$CLOUD_USER" CLOUD_PASS="$CLOUD_PASS" \
-ONPREM_KC="$ONPREM_KC" NAMESPACE="$NAMESPACE" \
-CLOUD_SC="$CLOUD_SC" ONPREM_SC="$ONPREM_SC" ONPREM_SNAPCLASS="$ONPREM_SNAPCLASS" \
-  bash "$INFRA_DIR/10-apply-reconciler.sh"
+bash "$INFRA_DIR/10-apply-reconciler.sh" \
+  --cloud-api   "$CLOUD_API" \
+  --cloud-user  "$CLOUD_USER" \
+  --cloud-pass  "$CLOUD_PASS" \
+  --onprem-kc   "$ONPREM_KC" \
+  --namespace   "$NAMESPACE"
 
 echo ""
 echo "=== Infrastructure install complete ==="
