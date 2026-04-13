@@ -4,7 +4,10 @@
 # and triggers the appropriate AAP job template automatically.
 #
 # Deploy this as an EDA Rulebook Activation in AAP on sno16.
-# The k8s source plugin connects to c103's API using the EDA credential.
+# Pass c103 connection details via EDA Activation extra_vars:
+#   K8S_AUTH_HOST: https://api.c103.anillocal.com:6443
+#   K8S_AUTH_API_KEY: <bearer-token>
+#   K8S_AUTH_VERIFY_SSL: "false"
 
 - name: VM DR - Watch vmtocloud namespace for VM events
   hosts: all
@@ -15,6 +18,9 @@
         namespace: vmtocloud
         label_selectors:
           - "dr.enabled=true"
+        host: "{{ K8S_AUTH_HOST | default(lookup('env', 'K8S_AUTH_HOST')) }}"
+        api_key: "{{ K8S_AUTH_API_KEY | default(lookup('env', 'K8S_AUTH_API_KEY')) }}"
+        verify_ssl: "{{ K8S_AUTH_VERIFY_SSL | default('false') | bool }}"
 
   rules:
     - name: VM created or updated — reconcile manifests
