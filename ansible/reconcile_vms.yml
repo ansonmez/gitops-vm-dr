@@ -119,13 +119,16 @@
 
     - name: Commit and push changes
       ansible.builtin.shell: |
+        set -e
         cd {{ work_dir }}
+        # Embed token in remote URL for push auth
+        git remote set-url origin "https://{{ git_token }}@{{ git_repo | regex_replace('^https://', '') }}"
         git add -A
         if git diff --cached --quiet; then
           echo "No changes to commit"
         else
           git commit -m "reconcile: sync VM manifests for namespace {{ namespace }}"
-          git push origin {{ git_branch }}
+          git push origin {{ git_branch }} 2>&1
           echo "Pushed changes"
         fi
       register: git_result

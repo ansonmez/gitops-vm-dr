@@ -139,13 +139,15 @@
 
     - name: Commit and push cleanup
       ansible.builtin.shell: |
+        set -e
         cd {{ work_dir }}
+        git remote set-url origin "https://{{ git_token }}@{{ git_repo | regex_replace('^https://', '') }}"
         git add -A
         if git diff --cached --quiet; then
           echo "No changes to commit"
         else
           git commit -m "gc: remove orphaned manifests for {{ orphaned_vms | join(', ') }}"
-          git push origin {{ git_branch }}
+          git push origin {{ git_branch }} 2>&1
           echo "Pushed changes"
         fi
       register: git_result

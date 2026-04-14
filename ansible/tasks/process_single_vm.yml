@@ -14,17 +14,6 @@
   register: vm_raw
   changed_when: false
 
-- name: "{{ vm.metadata.name }} — sanitize and write VM manifest"
-  ansible.builtin.copy:
-    content: "{{ vm_raw.stdout | from_json | sanitize_vm | to_nice_yaml(indent=2) }}"
-    dest: "{{ work_dir }}/vms/base/{{ namespace }}/vm-{{ vm.metadata.name }}.yaml"
-  vars:
-    # sanitize_vm filter is defined inline via the Python filter below
-    # Falls back to manual field removal if filter unavailable
-    sanitize_vm: "{{ lookup('template', 'templates/vm_sanitize.py.j2') }}"
-  ignore_errors: true
-
-# Fallback: manual sanitization via shell if filter unavailable
 - name: "{{ vm.metadata.name }} — sanitize VM via shell (portable)"
   ansible.builtin.shell: |
     oc get vm {{ vm.metadata.name }} -n {{ namespace }} \
