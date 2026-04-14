@@ -95,6 +95,11 @@
           namespace: {{ namespace }}
           resources:
             - ../../../base/{{ namespace }}
+          patches:
+            - target:
+                kind: VirtualMachine
+                group: kubevirt.io
+              path: patches/power-on.yaml
         dest: "{{ work_dir }}/vms/overlays/c103/{{ namespace }}/kustomization.yaml"
 
     - name: Regenerate cloud overlay kustomization.yaml from files on disk
