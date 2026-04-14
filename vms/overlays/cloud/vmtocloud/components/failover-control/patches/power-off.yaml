@@ -4,4 +4,4 @@ kind: VirtualMachine
 metadata:
   name: placeholder
 spec:
-  running: false
+  runStrategy: Halted

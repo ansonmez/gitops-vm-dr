@@ -57,8 +57,10 @@
             vol.pop('dataVolume')
             vol['persistentVolumeClaim'] = {'claimName': claim_name}
 
-    # Ensure running: false (base manifest — overlays control actual state)
-    spec['running'] = False
+    # Use runStrategy: Halted (preferred over spec.running which is deprecated).
+    # Remove both running and runStrategy first, then set runStrategy only.
+    spec.pop('running', None)
+    spec['runStrategy'] = 'Halted'
 
     import yaml
     print(yaml.dump(vm, default_flow_style=False, allow_unicode=True))

@@ -5,4 +5,4 @@ kind: VirtualMachine
 metadata:
   name: placeholder
 spec:
-  running: true
+  runStrategy: Always
