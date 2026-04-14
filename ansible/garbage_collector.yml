@@ -60,7 +60,8 @@
             base_vm_files.files
             | map(attribute='path')
             | map('basename')
-            | map('regex_replace', '^vm-(.+)\.yaml$', '\\1')
+            | map('regex_replace', '^vm-', '')
+            | map('regex_replace', '\.yaml$', '')
             | difference(live_vms)
             | list
           }}
