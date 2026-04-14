@@ -19,8 +19,7 @@ metadata:
   name: fedora-teal-peacock-33
   namespace: vmtocloud
 spec:
-  runStrategy: RerunOnFailure
-  running: false
+  runStrategy: Halted
   template:
     metadata:
       annotations:
