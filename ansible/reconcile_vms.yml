@@ -28,11 +28,10 @@
     dr_label: "dr.enabled=true"
 
   tasks:
-    - name: Ensure git and required tools are present
-      ansible.builtin.package:
-        name: [git, python3-kubernetes]
-        state: present
-      become: true
+    - name: Ensure git is available
+      ansible.builtin.command:
+        cmd: git --version
+      changed_when: false
       ignore_errors: true
 
     - name: Configure git user
