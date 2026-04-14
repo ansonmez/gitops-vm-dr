@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    alerts.k8s.io/KubePersistentVolumeFillingUp: disabled
+    app: containerized-data-importer
+    app.kubernetes.io/component: storage
+    app.kubernetes.io/managed-by: cdi-controller
+    app.kubernetes.io/part-of: hyperconverged-cluster
+    app.kubernetes.io/version: 4.20.8
+    instancetype.kubevirt.io/default-instancetype: u1.medium
+    instancetype.kubevirt.io/default-preference: fedora
+    kubevirt.io/created-by: 5e1d90d5-275c-4287-9fdc-009544e3fdc7
+  name: fedora-blue-clownfish-26
+  namespace: vmtocloud
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: '34144990004'
+  storageClassName: democratic-csi-nfs
+  volumeMode: Filesystem
+
