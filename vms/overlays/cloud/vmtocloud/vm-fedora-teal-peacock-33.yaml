@@ -3,6 +3,7 @@ apiVersion: kubevirt.io/v1
 kind: VirtualMachine
 metadata:
   annotations:
+    argocd.argoproj.io/tracking-id: vm-dr-c103-vmtocloud:kubevirt.io/VirtualMachine:vmtocloud/fedora-teal-peacock-33
     kubemacpool.io/transaction-timestamp: '2026-04-14T06:06:45.874980117Z'
     vm.kubevirt.io/validations: "[\n  {\n    \"name\": \"minimal-required-memory\"\
       ,\n    \"path\": \"jsonpath::.spec.domain.memory.guest\",\n    \"rule\": \"\
