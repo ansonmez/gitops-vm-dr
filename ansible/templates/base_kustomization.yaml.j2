@@ -7,7 +7,5 @@ namespace: {{ namespace }}
 resources:
 {% for vm in vms %}
   - vm-{{ vm.metadata.name }}.yaml
-{% for pvc in vm_pvc_map[vm.metadata.name] | default([]) %}
-  - pvc-{{ pvc }}.yaml
-{% endfor %}
+  - pvc-{{ vm.metadata.name }}.yaml
 {% endfor %}
