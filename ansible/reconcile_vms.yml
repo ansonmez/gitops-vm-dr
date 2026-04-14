@@ -42,7 +42,7 @@
 
     - name: Clone repo
       ansible.builtin.git:
-        repo: "https://{{ git_token }}@{{ git_repo | regex_replace('^https://', '') }}"
+        repo: "https://ansonmez:{{ git_token }}@{{ git_repo | regex_replace('^https://', '') }}"
         dest: "{{ work_dir }}"
         version: "{{ git_branch }}"
         force: true
@@ -122,7 +122,7 @@
         set -e
         cd {{ work_dir }}
         # Embed token in remote URL for push auth
-        git remote set-url origin "https://{{ git_token }}@{{ git_repo | regex_replace('^https://', '') }}"
+        git remote set-url origin "https://ansonmez:{{ git_token }}@{{ git_repo | regex_replace('^https://', '') }}"
         git add -A
         if git diff --cached --quiet; then
           echo "No changes to commit"
