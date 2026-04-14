@@ -5,8 +5,3 @@ kind: Kustomization
 namespace: vmtocloud
 resources:
   - ../../../base/vmtocloud
-patches:
-  - target:
-      kind: VirtualMachine
-      group: kubevirt.io
-    path: patches/power-on.yaml
