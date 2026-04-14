@@ -70,39 +70,12 @@
       ansible.builtin.debug:
         msg: "Orphaned VMs to remove: {{ orphaned_vms }}"
 
-    - name: Remove orphaned manifests
-      ansible.builtin.file:
-        path: "{{ item }}"
-        state: absent
-      loop:
-        - "{{ work_dir }}/vms/base/{{ namespace }}/vm-{{ orphan }}.yaml"
-        - "{{ work_dir }}/vms/base/{{ namespace }}/pvc-{{ orphan }}.yaml"
-        - "{{ work_dir }}/vms/overlays/c103/{{ namespace }}/vm-{{ orphan }}.yaml"
-        - "{{ work_dir }}/vms/overlays/cloud/{{ namespace }}/vm-{{ orphan }}.yaml"
-      vars:
-        orphan: "{{ outer_item }}"
-      loop_control:
-        loop_var: item
-      loop: "{{ orphaned_vms | product(['base-vm', 'base-pvc', 'c103-vm', 'cloud-vm']) | list }}"
-      ignore_errors: true
-
-    # Simpler approach: iterate orphans and delete known files
     - name: Remove orphaned VM files (base + overlays)
-      ansible.builtin.file:
-        path: "{{ item[0] }}"
-        state: absent
-      with_nested:
-        - "{{ orphaned_vms }}"
-      loop: >-
-        {{
-          orphaned_vms | map('regex_replace', '^(.+)$',
-            work_dir + '/vms/base/' + namespace + '/vm-\1.yaml') | list +
-          orphaned_vms | map('regex_replace', '^(.+)$',
-            work_dir + '/vms/base/' + namespace + '/pvc-\1.yaml') | list +
-          orphaned_vms | map('regex_replace', '^(.+)$',
-            work_dir + '/vms/overlays/cloud/' + namespace + '/vm-\1.yaml') | list
-        }}
-      ignore_errors: true
+      ansible.builtin.shell: |
+        rm -f "{{ work_dir }}/vms/base/{{ namespace }}/vm-{{ item }}.yaml"
+        rm -f "{{ work_dir }}/vms/base/{{ namespace }}/pvc-{{ item }}.yaml"
+        rm -f "{{ work_dir }}/vms/overlays/cloud/{{ namespace }}/vm-{{ item }}.yaml"
+      loop: "{{ orphaned_vms }}"
       when: orphaned_vms | length > 0
 
     - name: Regenerate base kustomization.yaml after cleanup
