@@ -1,0 +1,7 @@
+# c103 source cluster — VM should always be running.
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: placeholder
+spec:
+  runStrategy: RerunOnFailure
