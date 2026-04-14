@@ -83,7 +83,8 @@
         for f in "$DIR"/vm-*.yaml "$DIR"/pvc-*.yaml; do
           [ -f "$f" ] && echo "  - $(basename $f)" >> "$DIR/kustomization.yaml" && found=1
         done
-        [ "$found" = "0" ] && echo "  []" >> "$DIR/kustomization.yaml"
+        if [ "$found" = "0" ]; then echo "  []" >> "$DIR/kustomization.yaml"; fi
+        exit 0
       changed_when: true
 
     - name: Regenerate c103 overlay kustomization.yaml
