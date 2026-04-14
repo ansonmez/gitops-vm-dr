@@ -9,6 +9,8 @@ metadata:
       ,\n    \"path\": \"jsonpath::.spec.domain.memory.guest\",\n    \"rule\": \"\
       integer\",\n    \"message\": \"This VM requires more memory.\",\n    \"min\"\
       : 2147483648\n  }\n]\n"
+  deletionGracePeriodSeconds: 0
+  deletionTimestamp: '2026-04-14T13:07:27Z'
   labels:
     app: fedora-moccasin-reindeer-16
     dr.enabled: 'true'
