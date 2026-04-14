@@ -137,9 +137,34 @@
       changed_when: "'Pushed changes' in git_result.stdout"
       when: orphaned_vms | length > 0
 
-    # --- VolumeSync cleanup (outside GitOps — must be deleted explicitly) ---
+    # --- VolumeSync cleanup (outside GitOps — reconciled independently of Git state) ---
+    # Strategy: find all ReplicationSources on c103, delete any whose VM no longer exists.
+    # Then mirror the same logic on cloud for ReplicationDestinations.
 
-    - name: Delete VolumeSync ReplicationSource on c103 for orphaned VMs
+    - name: Get all ReplicationSources on c103
+      ansible.builtin.command:
+        cmd: >
+          oc get replicationsource -n {{ namespace }}
+          -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'
+          --server {{ k8s_host }}
+          --token {{ k8s_token }}
+          --insecure-skip-tls-verify
+      register: replication_sources_raw
+      changed_when: false
+      ignore_errors: true
+
+    - name: Identify orphaned ReplicationSources (source whose VM is not live)
+      ansible.builtin.set_fact:
+        orphaned_sources: >-
+          {{
+            replication_sources_raw.stdout_lines
+            | select('ne', '')
+            | map('regex_replace', '-src$', '')
+            | difference(live_vms)
+            | list
+          }}
+
+    - name: Delete orphaned ReplicationSource on c103
       ansible.builtin.command:
         cmd: >
           oc delete replicationsource {{ item }}-src -n {{ namespace }}
@@ -147,11 +172,11 @@
           --token {{ k8s_token }}
           --insecure-skip-tls-verify
           --ignore-not-found
-      loop: "{{ orphaned_vms }}"
-      when: orphaned_vms | length > 0
+      loop: "{{ orphaned_sources }}"
+      when: orphaned_sources | length > 0
       changed_when: true
 
-    - name: Delete VolumeSync source snapshot PVC on c103 for orphaned VMs
+    - name: Delete orphaned VolumeSync source snapshot PVC on c103
       ansible.builtin.command:
         cmd: >
           oc delete pvc volsync-{{ item }}-src-src -n {{ namespace }}
@@ -159,8 +184,8 @@
           --token {{ k8s_token }}
           --insecure-skip-tls-verify
           --ignore-not-found
-      loop: "{{ orphaned_vms }}"
-      when: orphaned_vms | length > 0
+      loop: "{{ orphaned_sources }}"
+      when: orphaned_sources | length > 0
       changed_when: true
 
     - name: Login to cloud cluster
@@ -170,28 +195,48 @@
           -u {{ cloud_user }}
           -p {{ cloud_pass }}
           --insecure-skip-tls-verify
-      when: orphaned_vms | length > 0
       changed_when: false
       no_log: true
 
-    - name: Delete VolumeSync ReplicationDestination on cloud for orphaned VMs
+    - name: Get all ReplicationDestinations on cloud
+      ansible.builtin.command:
+        cmd: >
+          oc get replicationdestination -n {{ namespace }}
+          -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'
+          --insecure-skip-tls-verify
+      register: replication_destinations_raw
+      changed_when: false
+      ignore_errors: true
+
+    - name: Identify orphaned ReplicationDestinations (dest whose VM is not live)
+      ansible.builtin.set_fact:
+        orphaned_destinations: >-
+          {{
+            replication_destinations_raw.stdout_lines
+            | select('ne', '')
+            | map('regex_replace', '-dest$', '')
+            | difference(live_vms)
+            | list
+          }}
+
+    - name: Delete orphaned ReplicationDestination on cloud
       ansible.builtin.command:
         cmd: >
           oc delete replicationdestination {{ item }}-dest -n {{ namespace }}
           --insecure-skip-tls-verify
           --ignore-not-found
-      loop: "{{ orphaned_vms }}"
-      when: orphaned_vms | length > 0
+      loop: "{{ orphaned_destinations }}"
+      when: orphaned_destinations | length > 0
       changed_when: true
 
-    - name: Delete VolumeSync destination PVC on cloud for orphaned VMs
+    - name: Delete orphaned VolumeSync destination PVC on cloud
       ansible.builtin.command:
         cmd: >
           oc delete pvc volsync-{{ item }}-dest-dst -n {{ namespace }}
           --insecure-skip-tls-verify
           --ignore-not-found
-      loop: "{{ orphaned_vms }}"
-      when: orphaned_vms | length > 0
+      loop: "{{ orphaned_destinations }}"
+      when: orphaned_destinations | length > 0
       changed_when: true
 
     - name: Cleanup work dir
