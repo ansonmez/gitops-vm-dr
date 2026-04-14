@@ -60,7 +60,7 @@
 
     - name: Parse VM list
       ansible.builtin.set_fact:
-        vms: "{{ (vms_raw.stdout | from_json).items }}"
+        vms: "{{ (vms_raw.stdout | from_json)['items'] }}"
 
     - name: Process each VM
       ansible.builtin.include_tasks: tasks/process_single_vm.yml
