@@ -4,7 +4,7 @@ kind: VirtualMachine
 metadata:
   annotations:
     argocd.argoproj.io/tracking-id: vm-dr-c103-vmtocloud:kubevirt.io/VirtualMachine:vmtocloud/fedora-moccasin-reindeer-16
-    kubemacpool.io/transaction-timestamp: '2026-04-14T12:56:22.569620675Z'
+    kubemacpool.io/transaction-timestamp: '2026-04-14T13:02:54.771170414Z'
     vm.kubevirt.io/validations: "[\n  {\n    \"name\": \"minimal-required-memory\"\
       ,\n    \"path\": \"jsonpath::.spec.domain.memory.guest\",\n    \"rule\": \"\
       integer\",\n    \"message\": \"This VM requires more memory.\",\n    \"min\"\
