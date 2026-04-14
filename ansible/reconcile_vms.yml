@@ -5,12 +5,13 @@
 # Run by: AAP job template "VM DR - Reconcile VMs" or EDA on VM create/update.
 #
 # Required env vars / AAP credentials:
-#   KUBECONFIG     - path to c103 kubeconfig (from AAP Machine credential)
-#   GIT_TOKEN      - GitHub personal access token with repo write (from AAP credential)
-#   NAMESPACE      - defaults to vmtocloud
-#   GIT_REPO       - defaults to https://github.com/ansonmez/gitops-vm-dr.git
-#   GIT_BRANCH     - defaults to main
-#   ONPREM_SC      - on-prem StorageClass name (defaults to democratic-csi-nfs)
+#   K8S_AUTH_HOST      - c103 API URL (injected by AAP "OpenShift or Kubernetes API Bearer Token" credential)
+#   K8S_AUTH_API_KEY   - c103 bearer token (injected by same credential)
+#   GIT_TOKEN          - GitHub personal access token with repo write (from AAP credential)
+#   NAMESPACE          - defaults to vmtocloud
+#   GIT_REPO           - defaults to https://github.com/ansonmez/gitops-vm-dr.git
+#   GIT_BRANCH         - defaults to main
+#   ONPREM_SC          - on-prem StorageClass name (defaults to democratic-csi-nfs)
 
 - name: Reconcile VM DR manifests to Git
   hosts: localhost
@@ -21,7 +22,8 @@
     git_branch: "{{ lookup('env', 'GIT_BRANCH') | default('main', true) }}"
     git_token: "{{ lookup('env', 'GIT_TOKEN') }}"
     onprem_sc: "{{ lookup('env', 'ONPREM_SC') | default('democratic-csi-nfs', true) }}"
-    kubeconfig: "{{ lookup('env', 'KUBECONFIG') }}"
+    k8s_host: "{{ lookup('env', 'K8S_AUTH_HOST') }}"
+    k8s_token: "{{ lookup('env', 'K8S_AUTH_API_KEY') }}"
     work_dir: "/tmp/gitops-vm-dr-reconcile"
     dr_label: "dr.enabled=true"
 
@@ -49,7 +51,10 @@
       ansible.builtin.command:
         cmd: >
           oc get vm -n {{ namespace }} -l {{ dr_label }}
-          -o json --kubeconfig {{ kubeconfig }}
+          -o json
+          --server {{ k8s_host }}
+          --token {{ k8s_token }}
+          --insecure-skip-tls-verify
       register: vms_raw
       changed_when: false
 

@@ -4,7 +4,7 @@
 # Run by: AAP job template "VM DR - Garbage Collect" or EDA on VM delete event.
 #
 # Required env vars:
-#   KUBECONFIG, GIT_TOKEN, NAMESPACE, GIT_REPO, GIT_BRANCH
+#   K8S_AUTH_HOST, K8S_AUTH_API_KEY, GIT_TOKEN, NAMESPACE, GIT_REPO, GIT_BRANCH
 
 - name: Garbage collect orphaned VM manifests from Git
   hosts: localhost
@@ -14,7 +14,8 @@
     git_repo: "{{ lookup('env', 'GIT_REPO') | default('https://github.com/ansonmez/gitops-vm-dr.git', true) }}"
     git_branch: "{{ lookup('env', 'GIT_BRANCH') | default('main', true) }}"
     git_token: "{{ lookup('env', 'GIT_TOKEN') }}"
-    kubeconfig: "{{ lookup('env', 'KUBECONFIG') }}"
+    k8s_host: "{{ lookup('env', 'K8S_AUTH_HOST') }}"
+    k8s_token: "{{ lookup('env', 'K8S_AUTH_API_KEY') }}"
     work_dir: "/tmp/gitops-vm-dr-gc"
     dr_label: "dr.enabled=true"
 
@@ -42,7 +43,9 @@
         cmd: >
           oc get vm -n {{ namespace }} -l {{ dr_label }}
           -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'
-          --kubeconfig {{ kubeconfig }}
+          --server {{ k8s_host }}
+          --token {{ k8s_token }}
+          --insecure-skip-tls-verify
       register: live_vms_raw
       changed_when: false
 

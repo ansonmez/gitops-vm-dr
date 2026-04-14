@@ -7,7 +7,10 @@
   ansible.builtin.command:
     cmd: >
       oc get vm {{ vm.metadata.name }} -n {{ namespace }}
-      -o json --kubeconfig {{ kubeconfig }}
+      -o json
+      --server {{ k8s_host }}
+      --token {{ k8s_token }}
+      --insecure-skip-tls-verify
   register: vm_raw
   changed_when: false
 
@@ -25,7 +28,10 @@
 - name: "{{ vm.metadata.name }} — sanitize VM via shell (portable)"
   ansible.builtin.shell: |
     oc get vm {{ vm.metadata.name }} -n {{ namespace }} \
-      -o json --kubeconfig {{ kubeconfig }} | \
+      -o json \
+      --server {{ k8s_host }} \
+      --token {{ k8s_token }} \
+      --insecure-skip-tls-verify | \
     python3 -c "
     import json, sys, copy
 
@@ -88,14 +94,19 @@
   ansible.builtin.shell: |
     oc get vm {{ vm.metadata.name }} -n {{ namespace }} \
       -o jsonpath='{range .spec.template.spec.volumes[*]}{.persistentVolumeClaim.claimName}{"\n"}{.dataVolume.name}{"\n"}{end}' \
-      --kubeconfig {{ kubeconfig }} | grep -v '^$' | sort -u
+      --server {{ k8s_host }} \
+      --token {{ k8s_token }} \
+      --insecure-skip-tls-verify | grep -v '^$' | sort -u
   register: pvc_names_raw
   changed_when: false
 
 - name: "{{ vm.metadata.name }} — write PVC manifests to base"
   ansible.builtin.shell: |
     oc get pvc {{ item }} -n {{ namespace }} \
-      -o json --kubeconfig {{ kubeconfig }} | \
+      -o json \
+      --server {{ k8s_host }} \
+      --token {{ k8s_token }} \
+      --insecure-skip-tls-verify | \
     python3 -c "
     import json, sys, yaml
 
